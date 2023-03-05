@@ -130,7 +130,7 @@ write_csv_list <- function(df_list) { #Aquí empieza la función
 
 ```
 
-## Aplicar la función a a lista de bases de datos
+## Aplicar la función a lista de bases de datos
 
 Finalmente, aplicamos la función a la lista de bases de datos: 
 
