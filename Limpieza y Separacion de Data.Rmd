@@ -1,0 +1,139 @@
+---
+title: "De Hojas de Cálculo a Bases de Datos por Separado"
+author: "Daniel Encinas Zevallos ^[Northwestern University]"
+output:
+  html_document:
+    df_print: paged
+    code_download: TRUE
+    toc: true
+    toc_depth: 2
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r, setup, include=FALSE}
+knitr::opts_chunk$set(
+  eval=FALSE, warning=FALSE, error=FALSE, message=FALSE
+)
+```
+
+*Este es un documento de R Markdown. Markdow es una sintaxis simple para hacer formatos en HTML, PDF y documentos de MS Word. Para mayores detalles, ingresar a <http://rmarkdown.rstudio.com>.*
+
+# Paquetes de R
+
+Voy a usar los paquetes `readxl` y `writexl` para leer y guardar documentos de Excel, respectivamente. El objetivo principal de este tutorial es mostrar cómo separar las hojas de cálculo de un solo documento de Excel en diferente bases de datos y, asimismo, guardar cada una de estas bases de datos como documentos .csv por separado. 
+
+Adicionalmente, uso de forma opcional un código poco eficiente -- en el sentido de contener repeticioens -- pero útil para corregir el nombre de las columnas y limpiar la base de caractéres extraños con `stringr` y `stringi`.
+
+Por último, el paquete `purrr` brinda herramientas para aplicar una misma función a varios objetos de forma eficiente. Sin embargo, también se usan otras opciones de la sintáxis básica de R como las funciones `lappy` y `for`  loops para hacer iteraciones. 
+
+```{r}
+
+library(readxl)
+library(writexl)
+library(purrr)
+library(stringr)
+library(stringi)
+``` 
+
+# Leer y separar la base de datos
+
+El repositorio incluye un folder [Data](https://github.com/danielencinaszevallos/modelo_peru_graphs/tree/main/data) donde se puede descargar el archivo "modelo_raw_data.xlsx" que contiene múltiples pestañas. El objetivo es leer el archivo, separar cada hoja de cálculo en múltiples bases de datos y depositarlas en el *Global Environment*.     
+
+El código de abajo usa la función `map` y tiene dos parámetros principales: uno referida a los objetos a los que se aplicará una misma función ("input") y otro referida a la función que será aplicada ("function"). La función  es `read_excel` y se aplica a la lista de nombres de hojas de cálculo asignadas por `excel_sheets`. El resultado es una lista de bases de datos, cuyos  nombres correspondientes se asignan con `set_names`. Cabe destacar que `file.choose()` permite asignar el archivo de Excel "modelo_raw_data.xlsx" abriendo *finder*, pero puede hacerse de otras maneras. 
+
+
+```{r}
+
+data_frames <-map(set_names(excel_sheets(file.choose())), #input
+   read_excel, path = file.choose()) #function
+```
+
+A continuación, utilizo la función `list2env` para guardar cada una de las bases de datos de la lista que arroja `map` en el *Global Environment*.
+
+```{r}
+list2env(data_frames, envir = .GlobalEnv) #save in Global Environment
+
+``` 
+
+
+# Limpiar Datos
+
+## Corregir los nombres de columnas 
+
+Antes de guardar las bases de datos como documentos de Excel por separado, aplico opcionalmente la función `colnames` para corregir el nombre de las columnas. El código es útil, aunque  podría mejorarse para que sea más eficiente. Por ejemplo, a continuación mueestro cómo corregir los nombres de las columnas de la base de datos del PBI_SECTORES.
+
+``` {r}
+
+colnames(PBI_SECTORES) <-c("sector", 2007:2017)
+
+``` 
+
+## Reemplazar caracteres extraños
+
+Asimismo, aplico opcionalmente funciones como `str_replace_all` y `stri_replace_all_fixed` para limpiar caractéres extraños en la base de datos. Estas funciones han sido utilizadas junto con `lapply` que aplica una misma función a un objeto de R y retorna una lista. Para retornar el output al formato de base de datos uso `as.data.frame`. Por ejemplo, abajo estandarizo el uso de punto en lugar de las ocasionales comas para indicar decimales. 
+
+Nuevamente, probablamente podría hacerse de forma más eficiente. Las sugerencias son bienvenidas.  
+
+``` {r}
+
+`ACCESO A LA SALUD`<-lapply(`ACCESO A LA SALUD`, str_replace_all,  ",", " .") %>% 
+  as.data.frame()
+
+``` 
+
+Luego de hacer esta limpieza de las bases de datos, se puede incluir las nuevas versiones de las bases de datoas en la lista. 
+
+```{r}
+data_frames <-list(PBI_PERU=PBI_PERU, PBI_SECTORES=PBI_SECTORES, `ACCESO A LA SALUD`=`ACCESO A LA SALUD`, `AÑOS - EDUCACIÓN`=`AÑOS - EDUCACIÓN`, `ALUMBRADO PUB.`=`ALUMBRADO PUB.`, DESNUTRICIÓN= DESNUTRICIÓN)
+```
+
+# Escribir varios documentos de Excel a la vez
+
+## Función para una base de datos
+
+Lo primero que voy a hacer es crear una función que extraiga el nombre de la base de datos, cambie el nombre a minúsculas y escriba un documento .csv con un patrón de nombre pre-determinado. 
+
+```{r}
+
+write_csv_name <- function(data){
+  name<-deparse(substitute(data)) #Extrae el nombre de de la base de datos
+  
+  name_low<-tolower(name) #Cambia el nombre de mayúsculas a minúsculas
+  
+  write.csv(data,paste0("/Users/danielencinas/modelo_", name_low ,".csv")) #Exporta un .csv y provee un path que indica una carpeta determinada y un patrón de nombre que empieza con modelo
+}
+
+write_csv_name(PBI_PERU)
+```
+
+
+## Función para una lista de bases de datos
+
+Luego, voy a modificar esta función para que pueda utilizarse en la lista de bases de datos que generé originalmente. Primero, incluyo un for loop para utilizar la función en cada una de las bases de datos de la lista. Además, utilizo `names` para extraer el nombre de la base de datos y `tolower` para cambiar el nombre a minúsculas.      
+
+```{r}
+write_csv_list <- function(df_list) { #Aquí empieza la función
+  for (i in seq_along(df_list)) { #Aquí empieza el for loop
+    
+    name <- names(df_list[i]) #Extraer el nombre de la base de datos
+    
+    name_low <- tolower(name) #Cambiar el nombre a minúsculas
+    
+    path<-paste0("/Users/danielencinas/modelo_", name_low ,".csv") #Crea un path con patrón de nombre
+    
+    write.csv(df_list[[i]], file=path) #Exportar un .csv y aplica el path
+    
+  } #Aquí termina el for loop
+  
+} #Aquí termina la función
+
+```
+
+## Aplicar la función a a lista de bases de datos
+
+Finalmente, aplicamos la función a la lista de bases de datos 
+
+```{r}
+write_csv_list(data_frames)
+```
