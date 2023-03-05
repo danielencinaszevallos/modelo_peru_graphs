@@ -1,5 +1,5 @@
 ---
-title: "De Hojas de Cálculo a Bases de Datos por Separado"
+title: "De Hojas de Cálculo en Excel a Bases de Datos"
 author: "Daniel Encinas Zevallos ^[Northwestern University]"
 output:
   html_document:
@@ -23,7 +23,7 @@ knitr::opts_chunk$set(
 
 Voy a usar los paquetes `readxl` y `writexl` para leer y guardar documentos de Excel, respectivamente. El objetivo principal de este tutorial es mostrar cómo separar las hojas de cálculo de un solo documento de Excel en diferente bases de datos y, asimismo, guardar cada una de estas bases de datos como documentos .csv por separado. 
 
-Adicionalmente, uso de forma opcional un código poco eficiente -- en el sentido de contener repeticioens -- pero útil para corregir el nombre de las columnas y limpiar la base de caractéres extraños con `stringr` y `stringi`.
+Adicionalmente, uso de forma opcional un código poco eficiente -- en el sentido de contener repeticiones -- pero útil para corregir el nombre de las columnas y limpiar la base de caractéres extraños con `stringr` y `stringi`.
 
 Por último, el paquete `purrr` brinda herramientas para aplicar una misma función a varios objetos de forma eficiente. Sin embargo, también se usan otras opciones de la sintáxis básica de R como las funciones `lappy` y `for`  loops para hacer iteraciones. 
 
@@ -40,7 +40,7 @@ library(stringi)
 
 El repositorio incluye un folder [Data](https://github.com/danielencinaszevallos/modelo_peru_graphs/tree/main/data) donde se puede descargar el archivo "modelo_raw_data.xlsx" que contiene múltiples pestañas. El objetivo es leer el archivo, separar cada hoja de cálculo en múltiples bases de datos y depositarlas en el *Global Environment*.     
 
-El código de abajo usa la función `map` y tiene dos parámetros principales: uno referida a los objetos a los que se aplicará una misma función ("input") y otro referida a la función que será aplicada ("function"). La función  es `read_excel` y se aplica a la lista de nombres de hojas de cálculo asignadas por `excel_sheets`. El resultado es una lista de bases de datos, cuyos  nombres correspondientes se asignan con `set_names`. Cabe destacar que `file.choose()` permite asignar el archivo de Excel "modelo_raw_data.xlsx" abriendo *finder*, pero puede hacerse de otras maneras. 
+El código de abajo usa la función `map` y tiene dos parámetros principales: uno referida a los objetos a los que se aplicará una misma función ("input") y otro referida a la función que será aplicada ("function"). La función  es `read_excel` y se aplica a la lista de nombres de hojas de cálculo asignadas por `excel_sheets`. El *output* o resultado es una lista de bases de datos, cuyos  nombres son asignan con `set_names`. Cabe destacar que `file.choose()` permite asignar el archivo de Excel "modelo_raw_data.xlsx" abriendo *finder*, pero puede hacerse de otras maneras. 
 
 
 ```{r}
@@ -132,8 +132,14 @@ write_csv_list <- function(df_list) { #Aquí empieza la función
 
 ## Aplicar la función a a lista de bases de datos
 
-Finalmente, aplicamos la función a la lista de bases de datos 
+Finalmente, aplicamos la función a la lista de bases de datos: 
 
 ```{r}
 write_csv_list(data_frames)
 ```
+
+Parte del código de este tutorial ha sido adaptado de las siguientes fuentes:
+
+- [R-bloggers](https://www.r-bloggers.com/2022/07/read-data-from-multiple-excel-sheets-and-convert-them-to-individual-data-frames/)
+- [Stackoverflow](https://stackoverflow.com/questions/50695860/using-write-xlsx-inside-lapply-to-write-each-data-frame-in-global-environment-to)
+- [R-bloggers](https://www.r-bloggers.com/2022/04/indexing-iterations-with-set_names/)
