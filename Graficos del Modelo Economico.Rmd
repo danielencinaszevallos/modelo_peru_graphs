@@ -1,0 +1,504 @@
+---
+title: "Gráficos del Modelo Económico"
+author: "Daniel Encinas Zevallos ^[Northwestern University / Puente Perú]"
+output:
+  html_document:
+    df_print: paged
+    code_download: yes
+    toc: yes
+    toc_depth: 2
+  pdf_document:
+    toc: yes
+    toc_depth: '2'
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+*Este es un documento de R Markdown. Markdow es una sintaxis simple para hacer formatos en HTML, PDF y documentos de MS Word. Para mayores detalles, ingresar a <http://rmarkdown.rstudio.com>.*
+
+# Paquetes de R
+
+En este tutorial utilizo principalmente `ggplot2`, incluído en el grupo de paquetes al cargar `tidyverse`. Para trabajar con los ejes y leyendas, uso el paquete `scales`. Por otra parte, los paquetes `gridExtra` y `patchwork` permitem acomodar gráficos uno al lado de otros, mientras que `grDevices` brinda acceso a funciones para guardar gráficos en diferentes formatos y resoluciones. Finalmente, para los gráficos animados utilizo `gganimate` junto con `gifski` y `av`; así como el paquete `magick` para incluir un gif en el gráfico.
+
+```{r}
+library(tidyverse)
+library(gganimate)
+library(gifski)
+library(av)
+library(patchwork)
+library(scales)
+library(gridExtra)
+library(grDevices)
+library(ggthemes)
+library(magick)
+library(extrafont)
+library(viridis) 
+library(hrbrthemes) 
+library(stringi)
+```
+
+#PBI 1922-2021
+
+El repositorio incluye un folder de [Data](https://github.com/danielencinaszevallos/modelo_peru_graphs/tree/main/data) donde se pueden descargar todas las bases de datos en formato .xlxs o .csv. Al mismo tiempo, los documentos .csv son llamados aquí directamente del *raw link* usando la función `read.csv`.
+
+Para empezar, el siguiente código carga la data para el PBI del Perú entre 1922 y 2021 (el año base es 2007). Además, uso `mutate` para crear una variable *lag* (correspondiente al año anterior) y una variable de cambio porcentual.
+
+```{r}
+pbi_peru <-
+  read.csv(
+    "https://raw.githubusercontent.com/danielencinaszevallos/modelo_peru_graphs/main/data/modelo_pbi_peru.csv"
+  ) %>%
+  mutate(
+    lag_pbi = lag(PBI_2007_BASE),
+    cambio_por = (PBI_2007_BASE - lag_pbi)/PBI_2007_BASE * 100
+  )
+```
+
+```{r}
+
+pbi_1 <-ggplot(pbi_peru) +
+  geom_area(aes(x = YEAR, y = PBI_2007_BASE / 100), fill = "magenta4") + #Dividido entre mil
+  ggthemes::theme_fivethirtyeight() +
+  scale_y_continuous(name="", limits = c(0, 5500)) + #Eje Y en blanco
+  scale_x_continuous(
+    name = "Año",
+    limits = c(1922, 2023),
+    breaks = scales::pretty_breaks(n = 10)
+  ) +
+  labs(title = "PBI 1922-2021 (Totales)",
+       subtitle= "Año base 2007") +
+    theme(axis.title = element_text()) #Esta capa cambia el default de tema que no acepta texto en ejes
+
+```
+
+```{r}
+pbi_2 <-ggplot(pbi_peru) +
+  geom_line(aes(x = YEAR, y = cambio_por), linewidth=1, color="green3") +
+  ggthemes::theme_fivethirtyeight() +
+  scale_y_continuous(name="") + #Eje Y en blanco
+  scale_x_continuous(
+    name = "Año",
+    limits = c(1922, 2023),
+    breaks = scales::pretty_breaks(n = 10)
+  ) +
+  labs(title = "PBI 1922-2021 (Variación Porcentual)",
+       subtitle = "Cambio porcentual de un año a otro",
+       caption = "Elaboración: @somospuenteperu") +
+    theme(axis.title = element_text()) #Esta capa cambia el default de tema que no acepta texto en ejes
+
+```
+
+La función `grid.arrange` del paquete GridExtra permite colocar los dos gráficos de arriba uno encima del otro.
+
+```{r}
+grid.arrange(pbi_1,pbi_2, nrow=2, ncol=1)
+```
+
+Finalmente, guardo estos gráficos directamente en la computadora con la función `jpeg` del paquete grDevices. Cambio algunos parámetros para asegurar una alta resolución.
+
+```{r}
+jpeg("pbi_peru.jpg", res=300, width = 8, height=8, units="in")
+grid.arrange(pbi_1,pbi_2, nrow=2, ncol=1)
+dev.off()
+
+```
+
+# Acceso a salud
+
+Nuevamente, cargamos la data de acceso a la salud desde el repositorio de Github.
+
+```{r}
+salud <- read.csv("https://raw.githubusercontent.com/danielencinaszevallos/modelo_peru_graphs/main/data/modelo_acceso%20a%20la%20salud.csv") 
+
+```
+
+El nombre las columnas tiene algunos caracteres extraños. Para corregirlo, uso la función `colnames` de R básico. Asimismo, acorto el nombre de dos regiones para ayudar a su visualización.   
+
+```{r}
+colnames(salud) <-c("ID", "region", 2008:2020)
+salud$region[7] <-"Callao"
+salud$region[16] <-"L.Metropolitana"
+```
+
+El formato de la base de datos puede complicar la visualización. Por eso, uso la función `pivot_longer` del paquete dplyr para convertir la data de formato ancho a formato largo. Es decir, ahora hay menos columnas pero más filas.
+
+```{r}
+salud_longer<-pivot_longer(salud, #Base de datos
+             cols = c(-ID, -region, `2008`:`2020`), #Columnas ID y región quedan iguales
+             names_to = "year", #El resto de nombres de columnas son ahora valores de la nueva columna "year".
+             values_to = "value") #Los valores ahora aparecen en una tercera columna "value" 
+
+```
+
+Finalmente, creo un gráfico con `ggplot` que toma como eje x el año, eje y el valor del año y que además está agrupado por región. El `geom_point` indica la creación de puntos y `geom_line` de líneas, ambos con una paleta de colores de `scale_color_viris`.
+
+El código añade otros detalles de estilo que son especificados en como comentarios en el código de abajo. Nuevamente, uso el tema `theme_fivethirtyeight` del paquete ggthemes. Sin embargo, modifico algunos aspectos de este tema con la función `theme`. Finalmente, `facets_wrap` crea un gráfico por cada región y `labs` permite especificar etiquetas generales de título, subtítulo y leyenda. 
+
+```{r}
+
+salud_grafico <- ggplot(salud_longer, aes(x = year, y = value*100, group = region)) +
+  geom_point(aes(color=region)) +
+  geom_line(aes(color=region)) +
+  scale_color_viridis(discrete = TRUE) +
+  ggthemes::theme_fivethirtyeight() +
+  facet_wrap( ~ region) +
+  theme(
+    legend.position = "none",
+    #Elimina la leyenda general por color y grupo
+    
+    panel.spacing = unit(1, "lines"),
+    #Añade espacio entre los plots
+    
+    strip.text.x = element_text(size = 8),
+    #Especifica el tamaño del texto en el eje x
+    
+    plot.title = element_text(size = 13),
+    #Especifica el tamaño del título del gráfico 
+    
+    axis.title.x = element_text(size = 11, face="bold")
+    #Espeficia el tamaño y estilo del título del eje x
+    
+  ) +
+  scale_x_discrete(guide = guide_axis(angle = 90),
+                   #El texto del eje x ahora está a 90 grados
+                   
+                   breaks = scales::pretty_breaks(n = 5),
+                   #Limita a 5 el número de quiebres en el eje
+                   
+                   name="Año") +
+                   #Especifica el título del eje
+  
+  labs(title = "Acceso a la Salud 2008-2020",
+       subtitle = "Porcentaje según región",
+       caption = "Elaboración: @somospuenteperu")
+
+salud_grafico
+
+```
+
+Como hice anteriormente, guardo el gráfico en alta resolución. 
+
+```{r}
+jpeg("salud_grafico.jpg", res=300, width = 8, height=8, units="in")
+salud_grafico
+dev.off()
+
+```
+
+# Alumbrado Público
+
+Otra vez seguimos los mismos pasos. Primero, cargamos la data.
+
+```{r}
+alumbrado <- read.csv("https://raw.githubusercontent.com/danielencinaszevallos/modelo_peru_graphs/main/data/modelo_alumbrado%20pub..csv") 
+```
+
+A continuación, corregimos nuevamente nombres de columnas y acortamos nombres de región. 
+
+```{r}
+colnames(alumbrado) <-c("ID", "region", 2009:2019)
+alumbrado$region[15] <-"Lima" 
+alumbrado$region[16] <-"Prov.Lima"
+alumbrado$region[17] <-"Reg.Lima"
+alumbrado$region[7] <-"Callao"
+```
+
+Igualmente, cambio el formato de la data de ancho a largo. 
+
+```{r}
+alumbrado_longer<-pivot_longer(alumbrado, #Base de datos
+             cols = c(-ID, -region, `2009`:`2019`), #Columnas ID y región quedan iguales
+             names_to = "year", #El resto de nombres de columnas son ahora valores de la nueva columna "year".
+             values_to = "value") #Los valores ahora aparecen en una tercera columna "value" 
+
+```
+
+Finalmente, hago nuevamente una imagen con múltiples gráficos de líneas y puntos (uno por región).
+
+```{r}
+alumbrado_grafico <- ggplot(alumbrado_longer, aes(x = year, y = value, group = region)) +
+  geom_point(aes(color=region)) + #Gráfico de dispersión
+  geom_line(aes(color=region)) + #Gráfico de líneas
+  scale_color_viridis(discrete = TRUE) + #Paleta de colores
+  ggthemes::theme_fivethirtyeight() + #Tema
+  facet_wrap( ~ region) + #Modificaciones al tema
+  theme(
+    legend.position = "none",
+    #Elimina la leyenda general por color y grupo
+    
+    panel.spacing = unit(1, "lines"),
+    #Añade espacio entre los plots
+    
+    strip.text.x = element_text(size = 8),
+    #Especifica el tamaño del texto en el eje x
+    
+    plot.title = element_text(size = 13),
+    #Especifica el tamaño del título del gráfico 
+    
+    axis.title.x = element_text(size = 11, face="bold")
+    #Espeficia el tamaño y estilo del título del eje x
+    
+  ) +
+  scale_x_discrete(guide = guide_axis(angle = 90), 
+                   #El texto del eje x ahora está a 90 grados
+                   
+                   breaks = scales::pretty_breaks(n = 5),
+                   #Limita a 5 el número de quiebres en el eje
+                   
+                   name="Año") +
+                   #Especifica el título del eje
+
+  labs(title = "Alumbrado Público 2009-2019",
+       #Título
+       
+       subtitle = "Porcentaje según región",
+       #Subtítulo
+       
+       caption = "Elaboración: @somospuenteperu")
+       #Leyenda
+
+alumbrado_grafico
+```
+
+Como hice anteriormente, guardo el gráfico en alta resolución. 
+
+```{r}
+jpeg("alumbrado_grafico.jpg", res=300, width = 8, height=8, units="in")
+alumbrado_grafico
+dev.off()
+```
+
+# Años de educación
+
+Nuevamente, hacemos todo el mismo procedimiento con la data de educación.
+
+```{r}
+educacion <- read.csv("https://raw.githubusercontent.com/danielencinaszevallos/modelo_peru_graphs/main/data/modelo_a%C3%B1os%20-%20educaci%C3%B3n.csv") 
+
+colnames(educacion) <-c("ID", "region", 2010:2020)
+educacion$region[15] <-"L.Metropolitana" 
+educacion$region[16] <-"Reg.Lima"
+educacion$region[7] <-"Callao"
+
+educacion_longer<-pivot_longer(educacion, #Base de datos
+             cols = c(-ID, -region, `2010`:`2020`), #Columnas ID y región quedan iguales
+             names_to = "year", #El resto de nombres de columnas son ahora valores de la nueva columna "year".
+             values_to = "value") #Los valores ahora aparecen en una tercera columna "value" 
+
+educacion_grafico <- ggplot(educacion_longer, aes(x = year, y = value, group = region)) +
+  geom_point(aes(color=region)) + #Gráfico de dispersión
+  geom_line(aes(color=region)) + #Gráfico de líneas
+  scale_color_viridis(discrete = TRUE) + #Paleta de colores
+  ggthemes::theme_fivethirtyeight() + #Tema
+  facet_wrap( ~ region) + #Modificaciones al tema
+  theme(
+    legend.position = "none",
+    #Elimina la leyenda general por color y grupo
+    
+    panel.spacing = unit(1, "lines"),
+    #Añade espacio entre los plots
+    
+    strip.text.x = element_text(size = 8),
+    #Especifica el tamaño del texto en el eje x
+    
+    plot.title = element_text(size = 13),
+    #Especifica el tamaño del título del gráfico 
+    
+    axis.title.x = element_text(size = 11, face="bold")
+    #Espeficia el tamaño y estilo del título del eje x
+    
+  ) +
+  scale_x_discrete(guide = guide_axis(angle = 90), 
+                   #El texto del eje x ahora está a 90 grados
+                   
+                   breaks = scales::pretty_breaks(n = 5),
+                   #Limita a 5 el número de quiebres en el eje
+                   
+                   name="Año") +
+                   #Especifica el título del eje
+
+  labs(title = "Años de Educacion 2010-2020",
+       #Título
+       
+       subtitle = "Según región",
+       #Subtítulo
+       
+       caption = "Elaboración: @somospuenteperu")
+       #Leyenda
+
+educacion_grafico
+
+```
+
+Como hice anteriormente, guardo el gráfico en alta resolución. 
+
+```{r}
+jpeg("educacion_grafico.jpg", res=300, width = 8, height=8, units="in")
+educacion_grafico
+dev.off()
+```
+
+# Años de nutricion
+
+Nuevamente, hacemos todo el mismo procedimiento con la data de nutricion.
+
+```{r}
+nutricion <- read.csv("https://raw.githubusercontent.com/danielencinaszevallos/modelo_peru_graphs/main/data/modelo_desnutrici%C3%B3n.csv") 
+
+colnames(nutricion) <-c("ID", "region", 2009:2013, 2015:2020)
+
+nutricion$region[15] <-"L.Metropolitana" 
+nutricion$region[16] <-"Lima 2/"
+nutricion$region[7] <-"Callao"
+
+nutricion<-lapply(nutricion, str_replace_all,  ",", ".") %>%
+  lapply(stri_replace_all_fixed,  "(", "") %>%
+  lapply(stri_replace_all_fixed,  ")", "") %>%
+  lapply(str_replace_all,  "-", "NA") %>%
+  as.data.frame() 
+
+colnames(nutricion) <-c("ID", "region", 2009:2013, 2015:2020)
+
+nutricion2 <-nutricion %>% 
+   mutate(across(.cols = c(`2009`:`2013`,`2015`:`2020`),
+                 .fns = as.double))
+
+nutricion_longer<-pivot_longer(nutricion2, #Base de datos
+             cols = c(-ID, -region, `2009`:`2013`,`2015`:`2020`), #Columnas ID y región quedan iguales
+             names_to = "year", #El resto de nombres de columnas son ahora valores de la nueva columna "year".
+             values_to = "value") #Los valores ahora aparecen en una tercera columna "value" 
+
+nutricion_grafico <- ggplot(nutricion_longer, aes(x = year, y = value, group = region)) +
+  geom_point(aes(color=region)) + #Gráfico de dispersión
+  geom_line(aes(color=region)) + #Gráfico de líneas
+  scale_color_viridis(discrete = TRUE) + #Paleta de colores
+  ggthemes::theme_fivethirtyeight() + #Tema
+  facet_wrap( ~ region) + #Modificaciones al tema
+  theme(
+    legend.position = "none",
+    #Elimina la leyenda general por color y grupo
+    
+    panel.spacing = unit(1, "lines"),
+    #Añade espacio entre los plots
+    
+    strip.text.x = element_text(size = 8),
+    #Especifica el tamaño del texto en el eje x
+    
+    plot.title = element_text(size = 13),
+    #Especifica el tamaño del título del gráfico 
+    
+    axis.title.x = element_text(size = 11, face="bold")
+    #Espeficia el tamaño y estilo del título del eje x
+    
+  ) +
+  scale_x_discrete(guide = guide_axis(angle = 90), 
+                   #El texto del eje x ahora está a 90 grados
+                   
+                   breaks = scales::pretty_breaks(n = 5),
+                   #Limita a 5 el número de quiebres en el eje
+                   
+                   name="Año") +
+                   #Especifica el título del eje
+
+  labs(title = "Desnutrición 2010-2020",
+       #Título
+       
+       subtitle = "Según región",
+       #Subtítulo
+       
+       caption = "Elaboración: @somospuenteperu")
+       #Leyenda
+
+nutricion_grafico
+
+```
+
+Como hice anteriormente, guardo el gráfico en alta resolución. 
+
+```{r}
+jpeg("nutricion_grafico.jpg", res=300, width = 8, height=8, units="in")
+nutricion_grafico
+dev.off()
+```
+
+# Otras alternativas de gráficos
+
+
+```{r}
+pbi_1_alt <-ggplot(pbi_peru) +
+  geom_area(aes(x = YEAR, y = PBI_2007_BASE / 1000)) + #, fill = "magenta4") +
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank()) +
+  scale_y_continuous(name = "PBI (Miles)", limits = c(0, 550)) +
+  scale_x_continuous(
+    name = "Año",
+    limits = c(1922, 2023),
+    breaks = scales::pretty_breaks(n = 10)
+  ) +
+  labs(title = "PBI 1922-2021 (Totales)") 
+
+```
+
+```{r}
+
+pbi_2_alt <-ggplot(pbi_peru) +
+  geom_line(aes(x = YEAR, y = cambio_por), linewidth=1) + 
+  theme_classic() +
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank()) +
+  scale_y_continuous(name = "PBI (Variación Porcentual)") +
+  scale_x_continuous(
+    name = "Año",
+    limits = c(1922, 2023),
+    breaks = scales::pretty_breaks(n = 10)
+  ) +
+  labs(title = "PBI 1922-2021 (Porcentaje)",
+       caption = "Elaboración: @somospuenteperu")
+
+```
+
+```{r}
+
+grid.arrange(pbi_1_alt+theme_classic(),pbi_2_alt +theme_classic(), nrow=2, ncol=1)
+
+grid.arrange(pbi_1_alt+theme_bw(),pbi_2_alt +theme_bw(), nrow=2, ncol=1) #Temática blanco y negro
+
+grid.arrange(pbi_1_alt + ggthemes::theme_fivethirtyeight(), #Temática de fivethertyeight
+             pbi_2_alt + ggthemes::theme_fivethirtyeight(), #Temática de fivethertyeight
+             nrow=2, ncol=1)
+
+grid.arrange(
+  pbi_1_alt + ggthemes::theme_economist() + #Temática de The Economist
+    ggthemes::scale_color_economist() +
+    ggthemes::scale_fill_economist(),
+  pbi_2_alt + ggthemes::theme_economist() + #Temática de The Economist
+    ggthemes::scale_color_economist() + 
+    ggthemes::scale_fill_economist(),
+  nrow = 2,
+  ncol = 1
+)
+
+grid.arrange(
+  pbi_1_alt + ggthemes::theme_wsj() + #Temática del Wall Street Journal 
+    ggthemes::scale_color_wsj(),
+  pbi_2_alt + ggthemes::theme_wsj() + #Temática del Wall Street Journal
+    ggthemes::scale_color_wsj(),
+  nrow = 2,
+  ncol = 1
+)
+
+grid.arrange(
+  pbi_1_alt + ggthemes::theme_hc() + #Temática de High Charts
+    ggthemes::scale_color_hc(),
+  pbi_2_alt + ggthemes::theme_hc() + #Temática de High Charts
+    ggthemes::scale_color_hc(),
+  nrow = 2,
+  ncol = 1
+)
+
+
+```
